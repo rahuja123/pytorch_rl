@@ -52,18 +52,26 @@ STEP 1: LOADING DATASET
 data_file = 'pairs.npy'
 data = np.load(data_file)
 data = np.array(data)
+print(len(data))
+print("dataset loaded")
 
 preprocess = transforms.Compose([
    transforms.ToTensor()
 ])
+
 def data_iter_(data,index):
     triplet = data[index][0:-1]
+    print(len(triplet))
     print(triplet)
+
     label = data[index][-1]
+    print(label)
     images = torch.FloatTensor()
     for lists in triplet:
         for im_path in lists:
             images = torch.cat((images, preprocess(np.array(cv2.imread(im_path))).unsqueeze(0)))
+            print(images.shape)
+
 
     sample = {'images': images,'label':label}
     return sample
@@ -81,6 +89,9 @@ EPS_END = 0.05
 EPS_DECAY = 200
 
 model = DQN()
+# print("DQN inititated")
+if torch.cuda.is_available():
+    model = model.cuda()
 
 
 optimizer = optim.RMSprop(model.parameters())
@@ -97,12 +108,18 @@ def select_action(state):
         math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
-        #print state.max(0)[1].view(1, 1).float().type()
+        print(state.max(0)[1].view(1, 1).float().type())
         return state.max(0)[1].view(1, 1).float()
     else:
         return torch.FloatTensor([[random.randrange(3)]])
 
 last_sync = 0
+
+def pool_avg(state, new_state):
+    output= np.divide((state + new_state),2)
+    #print(output)
+
+    return output
 
 
 def optimize_model():
@@ -167,7 +184,7 @@ def optimize_model():
     #print "loss: ",loss
     # Optimize the model
     optimizer.zero_grad()
-    loss.backward()
+    loss.backward(retain_graph=True)
     a = make_dot(loss, params=dict(model.named_parameters()))
     plt.show(a)
     for name,param in model.named_parameters():
@@ -182,24 +199,32 @@ for name,param in model.named_parameters():
 num_episodes = 10
 for i_episode in range(len(data)):
     optimizer.zero_grad()
-    batch_iter_sample= data_iter_(data,i_episode)  ## size - 6*size of an image
+    batch_iter_sample= data_iter_(data,i_episode)  ## size - 6*size of an image #done
     data_iter = Variable(batch_iter_sample['images'])
     label = Variable(torch.from_numpy(np.array(batch_iter_sample['label'])))
-    data_iter = data_iter.type(FloatTensor)
-    action_values = model(data_iter)
-    #print data_iter.size()
-    action_values = action_values.data
-    #print action_values.size()
-    #print data_iter.size()
-    done = 0
 
+    data_iter = data_iter.type(FloatTensor)
+    action_values = model(data_iter.data)
+    action_values = action_values.data
+    print(type(data_iter))
+    print(type(data_iter.data))
+    done = 0
     states = data_iter.data
-    #print states.size()
+
+
 
     for t in count():
         action = select_action(action_values[t])
+        # print(action_values[t])
+        # print(action)
 
         state = torch.cat([states[t].unsqueeze(0),states[t+1].unsqueeze(0)])
+        # print(state)
+        next_state = torch.cat([states[2*t+2].unsqueeze(0),states[2*t+3].unsqueeze(0)])
+        # print(next_state)
+
+        # print(pool_avg(state, next_state), "pooled")
+        exit()
 
         if action.numpy()[0] == 0:
             done = 1
@@ -224,7 +249,7 @@ for i_episode in range(len(data)):
                 next_state = None
             else:
                 reward = 0.2
-                next_state = torch.cat([states[t+1].unsqueeze(0),states[t+2].unsqueeze(0)])
+                next_state = torch.cat([states[2*t+2].unsqueeze(0),states[2*t+3].unsqueeze(0)])
 
         reward = torch.FloatTensor([reward]).unsqueeze(0)
         memory.push(state, action, next_state, reward)
