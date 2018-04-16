@@ -2,15 +2,35 @@ import torch
 from baseline_network_ import AlexNet
 import torch.nn as nn
 from torch.autograd import Variable
+import numpy as np
+import torch.nn.init as init
+
+# def weight_init(m):
+#     if isinstance(m, nn.Linear):
+#         size = m.weight.size()
+#         fan_out = size[0] # number of rows
+#         fan_in = size[1] # number of columns
+#         variance = np.sqrt(2.0/(fan_in + fan_out))
+#         m.weight.data.normal_(0.0, variance)
+#         return m
+
 
 class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
         self.model = AlexNet()
+
         self.fc1 = nn.Linear(1536,256)
+        init.xavier_uniform(self.fc1.weight, gain=np.sqrt(2))
+        init.constant(self.fc1.bias, 0.1)
         self.fc2 = nn.Linear(256,128)
+        init.xavier_uniform(self.fc2.weight, gain=np.sqrt(2))
+        init.constant(self.fc2.bias, 0.1)
         self.fc3 = nn.Linear(128,3)
+        init.xavier_uniform(self.fc3.weight, gain=np.sqrt(2))
+        init.constant(self.fc3.bias, 0.1)
+
         print("ho gaya finally initialize")
 
     def features(self,x):
