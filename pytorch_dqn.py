@@ -1,5 +1,5 @@
 import torch
-from baseline_network_ import AlexNet
+from baseline_network import AlexNet
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
@@ -30,8 +30,6 @@ class DQN(nn.Module):
         self.fc3 = nn.Linear(128,3)
         init.xavier_uniform(self.fc3.weight, gain=np.sqrt(2))
         init.constant(self.fc3.bias, 0.1)
-
-        print("ho gaya finally initialize")
 
     def features(self,x):
         x = self.model(x)
@@ -66,3 +64,22 @@ if __name__ == '__main__':
         param.requires_grad = True
         # print(param, "param")
         # print(name, "name")
+    pre_trained_model=torch.load('alexnet-owt-4df8aa71.pth')
+    pre_trained_weights=list(pre_trained_model.items())
+   
+    custom_alexnet=model.state_dict()
+
+    count=0
+    for key,value in custom_alexnet.items():
+
+        layer_name,weights=pre_trained_weights[count]
+        #if count == 0:
+        #    print custom_alexnet[key]
+        #print layer_name,": Updation done."
+        custom_alexnet[key]=weights
+        #if count == 0:
+        #    print custom_alexnet[key][0]
+        count = count + 1
+        if count>=10:
+            break
+    print "PreTrained Weights Updated"
