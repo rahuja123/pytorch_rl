@@ -18,14 +18,16 @@ from pytorch_dqn import DQN
 from torchviz import make_dot
 import shutil
 
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+
 use_cuda = torch.cuda.is_available()
-resume= False
+resume= True
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
 Tensor = FloatTensor
+
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
 
 class ReplayMemory(object):
 
@@ -62,45 +64,44 @@ preprocess = transforms.Compose([
 
 def data_iter_(data,index):
     triplet = data[index][0:-1]
-    # print(len(triplet))
-    # print(triplet)
+    #print(len(triplet))
 
     label = data[index][-1]
-    # print(label)
     images = torch.FloatTensor()
     for lists in triplet:
         for im_path in lists:
             images = torch.cat((images, preprocess(np.array(cv2.imread(im_path))).unsqueeze(0)))
-            # print(images.shape)
 
 
     sample = {'images': images,'label':label}
     return sample
 
 
-#print len(data)
-#sample = data_iter_(data,0)
-#print len(sample['images']),sample['label']
-#print sample['images'].size()
-
 BATCH_SIZE = 8
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
+TARGET_UPDATE = 10
 
+##MODEL
+policy_net = DQN()
+target_net = DQN()
+
+##LOADING PRETRAINED WEIGHTS
 if resume:
-    model= DQN()
-    model.load_state_dict(torch.load('model_run_epi100_dqn.pt')) #give_path
-else:
-    model = DQN()
+    policy_net.load_state_dict(torch.load('model_run_epi300_dqn.pt')) #give_path
 
-# print("DQN inititated")
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()
+
+print("DQN inititated")
+
 if torch.cuda.is_available():
     model = model.cuda()
 
 
-optimizer = optim.RMSprop(model.parameters())
+optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(10000)
 
 num_episodes = 10
@@ -121,21 +122,23 @@ def select_action(state):
     else:
         return torch.FloatTensor([[random.randrange(3)]])
 
-last_sync = 0
+
 
 def pool_avg_func(state, new_state):
-    # print("hey")
+    print("hey")
+    print state,new_state
     output= torch.div(state+new_state,2)
-
+    print output
     return output
 
 def save_checkpoint(state, filename='checkpoint'):
     torch.save(state, filename)
     print("model_saved")
 
+
 def optimize_model():
 
-    global last_sync
+
     if len(memory) < BATCH_SIZE:
         return
     while True:
@@ -151,21 +154,17 @@ def optimize_model():
     # We don't want to backprop through the expected action values and volatile
     # will save us on temporarily changing the model parameters'
     # requires_grad to False!
-    #print batch.next_state.type()
         x = [s for s in batch.next_state if s is not None]
         if len(x)>0:
-            #print x
             non_final_next_states = Variable(torch.cat(x)) ##size = (_,3x64x50)
             break
-    # print(non_final_next_states.size())
+
     state_batch = Variable(torch.cat(batch.state))
     action_batch = Variable(torch.cat(batch.action))
     reward_batch = Variable(torch.cat(batch.reward))
-    #print state_batch.size()
-    action_values = model(state_batch) ##predicted
-    # print(action_values.volatile)
-    #print action_values.size()
-    action_batch_ = torch.LongTensor((BATCH_SIZE,1))
+
+    action_values = policy_net(state_batch) ##predicted
+    action_batch_ = torch.LongTensor((action_batch.size(0),1))
     #action_batch_ = actionon_batch.clone()
     action_batch_ = action_batch.type_as(action_batch_)
     state_action_values = action_values.gather(1,action_batch_)
@@ -173,7 +172,7 @@ def optimize_model():
 
     # Compute V(s_{t+1}) for all next states.
     next_state_values = Variable(torch.zeros(BATCH_SIZE).type(Tensor))
-    next_state_values[non_final_mask]= model(non_final_next_states).data.max(1)[0]
+    next_state_values[non_final_mask]= target_net(non_final_next_states).data.max(1)[0]
     #temp_action_value= model(non_final_next_states)
     #next_state_values[non_final_mask] = temp_action_value.max(1)[0]
     #print next_state_values,non_final_mask
@@ -189,27 +188,27 @@ def optimize_model():
     #print expected_state_action_values
     # Compute Huber loss
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-    print(loss, "loss")
+    print(loss.data, "loss")
     # print(state_batch.volatile)
     # print(loss.volatile)
     #print "loss: ",loss
     # Optimize the model
     optimizer.zero_grad()
     loss.backward(retain_graph=True)
-    a = make_dot(loss, params=dict(model.named_parameters()))
-    plt.show(a)
-    for name,param in model.named_parameters():
-        # print(name,param.requires_grad)
+    #a = make_dot(loss, params=dict(model.named_parameters()))
+    #plt.show(a)
+    for name,param in policy_net.named_parameters():
+        #print(name,param.requires_grad)
         param.grad.data.clamp_(-1, 1)
         #$i+=1
     optimizer.step()
 
-for name,param in model.named_parameters():
-    param.requires_grad = True
+#for name,param in model.named_parameters():
+#    param.requires_grad = True
 
 for i_episode in range(len(data)):
     print("episode", i_episode)
-    optimizer.zero_grad()
+    
     batch_iter_sample= data_iter_(data,i_episode)  ## size - 6*size of an image #done
     data_iter = Variable(batch_iter_sample['images'])
     label = Variable(torch.from_numpy(np.array(batch_iter_sample['label'])))
@@ -218,12 +217,9 @@ for i_episode in range(len(data)):
     states = data_iter.data
     prev_state= data_iter[0:2]
 
-    # print(prev_state.shape)
-    # print(data_iter)
-    # print(prev_state)
-
-
-
+    action_values = policy_net(data_iter)
+    action_values = action_values.data
+    #print action_values
 
     for t in count():
         # print(type(prev_state,))
@@ -231,23 +227,23 @@ for i_episode in range(len(data)):
         print("t=", t)
         # print(prev_state)
         # print(data_iter[2*t : 2*t+2])
-        pool_avg=pool_avg_func(prev_state, data_iter[2*t : 2*t+2])
-        prev_state = pool_avg
-        # print(pool_avg)
+        #pool_avg=pool_avg_func(prev_state, data_iter[2*t : 2*t+2])
+        #prev_state = pool_avg
+        #print(pool_avg)
 
 
-        action_values = model(pool_avg)
+        #)
         # print(action_values[0])
-        action_values = action_values.data
+        
         done = 0
 
-        action = select_action(action_values[0])
+        action = select_action(action_values[t])
         # print(action_values[t])
         # print(action)
 
         state = torch.cat([states[2*t].unsqueeze(0),states[2*t+1].unsqueeze(0)])
         # print(state)
-        # next_state = torch.cat([states[2*t+2].unsqueeze(0),states[2*t+3].unsqueeze(0)])
+        #next_state = torch.cat([states[2*t+2].unsqueeze(0),states[2*t+3].unsqueeze(0)])
         # print(next_state)
 
         # print(pool_avg(state, next_state), "pooled")
@@ -258,7 +254,7 @@ for i_episode in range(len(data)):
             if label == 1:
                 reward = 1
             else:
-                reward = -1
+                reward = -2
         elif action.numpy()[0] == 1:
             next_state = None
             done = 1
@@ -282,15 +278,28 @@ for i_episode in range(len(data)):
 
         # Move to the next state
 
-        state = next_state
+        #state = next_state
         optimize_model()
-        if(i_episode%100==0):
-            save_checkpoint(model.state_dict(), 'model_run_epi%d_dqn.pt' %(i_episode))
-
+    
 
 
         if done:
             break
         # Perform one step of the optimization (on the target network)
         #optimize_model()
-save_checkpoint(model.state_dict(), 'model_run_complete_dqn.pt')
+    if(i_episode%100==0):
+            save_checkpoint(policy_net.state_dict(), 'model_run_epi%d_dqn.pt' %(i_episode))
+
+            # Update the target network
+    if i_episode % TARGET_UPDATE == 0:
+        target_net.load_state_dict(policy_net.state_dict())
+count = 0
+
+for i in range(0,500):
+    optimize_model()
+    if i % TARGET_UPDATE == 0:
+        target_net.load_state_dict(policy_net.state_dict())
+
+
+        
+save_checkpoint(policy_net.state_dict(), 'model_run_complete_dqn.pt')

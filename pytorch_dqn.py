@@ -21,7 +21,7 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
         self.model = AlexNet()
 
-        self.fc1 = nn.Linear(1536,256)
+        self.fc1 = nn.Linear(256*6*6,256)
         init.xavier_uniform(self.fc1.weight, gain=np.sqrt(2))
         init.constant(self.fc1.bias, 0.1)
         self.fc2 = nn.Linear(256,128)
@@ -41,15 +41,22 @@ class DQN(nn.Module):
     	#b = x[x.size(0)/2:x.size(0)]
     	#y = a+b
         x = self.features(x)
+        x = x.view(-1,256*6*6)
+        #print x.size()
         new_batch_size = int(x.size(0)/2)
         # print(x.size(0), "x.size(0)")
         # print(new_batch_size, "new batch size")
-        # print(x.size, "x.size")
+        #print x.size, "x.size"
 
 
         x1 = Variable(torch.randn(new_batch_size, x.size(1)).type(torch.FloatTensor))
         for i in range(0,new_batch_size):
-            x1[i] = x[2*i]+x[2*i+1]
+            if i==0:
+                x1[i] = x[2*i]+x[2*i+1]
+                x1[i] = x1[i]/2
+            else:
+                x1[i] = x[2*1]+x[2*i+1] + x1[i-1]
+                x1[i] = x1[i]/3
 
         x = self.fc1(x1)
         x = self.fc2(x)
