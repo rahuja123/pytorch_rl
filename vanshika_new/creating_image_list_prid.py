@@ -3,9 +3,9 @@ import os
 import glob
 import numpy as np
 
-root = '../../prid_2011/multi_shot/'
+root = 'output_images/'
 files = os.listdir(root)
-#print files
+files = ['cam_a','cam_b']
 
 image_paths = []
 labels = []
@@ -15,12 +15,12 @@ images = []
 
 for f in files:
     #print f
-    for i in xrange(101,151):
+    for i in xrange(2,201):
         person_path =  root+f+'/person_{:04d}'.format(i)
         #print person_path
-        a = glob.glob(person_path+'/*.png')
+        #a = glob.glob(person_path+'/*.png')
         #print a
-        
+        a = person_path + '/region1.jpg'
         for j in range(0,len(a)):
             image = []
             image.append(a[j])
@@ -28,5 +28,6 @@ for f in files:
             images.append(image)
 
 images = np.asarray(images)
-#print images[0]
-np.save('test_images',images)
+print images[0]
+print len(images)
+#np.save('prid_head',images)
