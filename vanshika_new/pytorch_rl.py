@@ -17,15 +17,15 @@ import torchvision.transforms as transforms
 from pytorch_dqn import DQN
 from torchviz import make_dot
 import shutil
-#from baseline_network import AlexNet
 from alexnet import AlexNet
 from viper_train import *
+
+
 
 use_cuda = torch.cuda.is_available()
 resume= False
 test = True
 new = 1
-alex = 1
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
@@ -71,14 +71,18 @@ print("dataset loaded")
 '''
 PREPROCESSING DATASET
 '''
-normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+normalize_ = transforms.Normalize(mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225])
+
+normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
+            std=[0.5, 0.5, 0.5])
+
 preprocess = transforms.Compose([
     transforms.ToPILImage(),
     #transforms.RandomResizedCrop(224),
     transforms.RandomHorizontalFlip(),
-    transforms.ToTensor()
-    #normalize
+    transforms.ToTensor(),
+    normalize
 ])
 
 '''
@@ -117,6 +121,8 @@ target_net = DQN()
 #alexnet.eval()
 #alexnet = torch.load('classifier/model_run_complete_dqn_viper.pth')
 alexnet = torch.load('classifier/model_run_complete_dqn_viper.pth')
+alexnet.eval()
+
 
 print "Alexnet weights loaded"
 
@@ -140,8 +146,6 @@ count = 0
 for name,param in policy_net.named_parameters():
         param.requires_grad = True
 
-#for name,param in policy_net.named_parameters():
-#    print name,param.requires_grad
 
 optimizer = optim.Adam(policy_net.parameters(),lr = 0.00001)
 
@@ -151,6 +155,7 @@ num_episodes = 10
 index = 0
 steps_done = 0
 
+
 def select_action(state):
     global steps_done
     sample = random.random()
@@ -158,31 +163,23 @@ def select_action(state):
         math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold or test:
-        # print(state.max(0)[1].view(1, 1).float().type())
         return state.max(0)[1].view(1,1).float()
-        # return state.max(0)[1].view(1,1).float() #original_varibale
-
     else:
         return torch.FloatTensor([[random.randrange(3)]])
 
+
 def pool_avg_func(state, new_state):
-   # print("hey")
-    #print state,new_state
     output= torch.div(state+new_state,2)
-    #print output
     return output
 
+
 if test:
-
-
     policy_net = torch.load('alexnet_model/model_run_complete_dqn_viper_final.pth')
     alexnet = torch.load('classifier/model_run_complete_dqn_viper.pth')
     policy_net.eval()
     alexnet.eval()
-
-
     
-    
+    """
     test_dataset = Viper_Train(name='test_image.npy',
                        data_dir = 'data',
                        transform=transforms.Compose([
@@ -203,12 +200,11 @@ if test:
 
         labels = torch.from_numpy(np.asarray(sample_batch['label'],dtype='int64'))
         images = Variable(images)
-        outputs,_ = alexnet(images)
-        _, predicted = torch.max(outputs.data, 1)
+        _,features = alexnet(images)
 
     #print "Predicted:",predicted, "Actual:", labels
     
-
+    """
     print "Already Trained Model load_state_dict" #give_path
     for name,param in policy_net.named_parameters():
         param.requires_grad = False
@@ -217,16 +213,12 @@ if test:
         param.requires_grad = False
     correct = 0
 
-    #print len(data)
     for i_episode in range(len(test_data)):
-
-
-        #print data[i_episode]
         batch_iter_sample= data_iter_(test_data,i_episode) 
         #print batch_iter_sample['images']
          ## size - 6*size of an image #done
         data_iter = Variable(batch_iter_sample['images'])
-        label = Variable(torch.from_numpy(np.array(batch_iter_sample['label'])))
+        #label = Variable(torch.from_numpy(np.array(batch_iter_sample['label'])))
 
         data_iter = data_iter.type(FloatTensor)
         #print data_iter
@@ -286,67 +278,27 @@ if test:
             #correct = 4
             #action = select_action(action_values[t])
             action = action_values[t].max(0)[1].view(1,1)
-            #print "Action:",action,"Label:",lab
+            print "Action:",action,"Label:",lab
             
             if action.numpy()[0] == 0:
                 #print "Action:",action,"Label:",lab
-                if alex:
-                    if predicted[0]==predicted[1] :
-                        print "Action: 0","Label:",lab
-                        correct = correct+1
-
-                    #if lab == 1:
-                        #print "correct"
-                    else:
-                        print "Action: 1","Label:",lab
-                    
-                    done = 1
-                else:
-                
-                    print "Action:",action,"Label:",lab
-                    if lab == 1:
-                        #print "correct"
-                        correct = correct+1
-                        done = 1
-                        
-                    
-
+                if lab == 1:
+                    correct = correct +1
+                print "OVER"    
+                done = 1   
                 break
 
             elif action.numpy()[0] == 1:
                 #print "Action:",action,"Label:",lab
-                if alex:
-                    if predicted[0]!=predicted[1] :
-                        correct = correct+1
-                    #if lab == 0:
-                        #print "correct"
-                        print "Action: 1","Label:",lab
-                    else :
-                        print "Action: 0","Label:",lab
-                    done = 1
-                else:
-                    
-                    if lab == 0:
-                    #print "correct"
-                        correct= correct+1
-                        done = 1
-                    
+                if lab == 0:
+                        correct = correct +1
+                print "OVER"            
+                done = 1   
                 break
-
-
-    
-                        
-                done = 1
-                    
-                break
-            elif action.numpy()[0]==2:
-                print "Action:",action,"Label:",lab
-
-
             
             if t>=2:
                 #print "Action:",action,"Label:",lab
-
+                print "OVER"
                 done = 1
                 break
 
